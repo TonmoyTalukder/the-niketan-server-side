@@ -23,7 +23,7 @@ _CS Student, AUST, Dhaka 1208_
 ## Project Description:
 
 > - Full Stack Javascript Project
-> - Frontend: React Js and Bootstrap 5.0
+> - Frontend: React Js and Material UI
 > - Backend: Node Js
 > - Database: NoSQL Database - MongoDb
 > - CRUD Operation, Private Router, Firebase Authentication, Admin
