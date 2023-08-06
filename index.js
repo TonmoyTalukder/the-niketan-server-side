@@ -1,44 +1,32 @@
-const admin = require("firebase-admin");
 const { MongoClient, ServerApiVersion } = require('mongodb');
 const ObjectId = require('mongodb').ObjectId;
+const admin = require('firebase-admin');
+const cors = require('micro-cors')();
+const micro = require('micro');
+const { parse } = require('url');
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@traversymedia.a77qb.mongodb.net/?retryWrites=true&w=majority`;
 
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
-});
+let client;
 
-async function run() {
-  try {
+async function connectToDatabase() {
+  if (!client) {
+    client = new MongoClient(uri, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+    });
     await client.connect();
-    console.log('database connected successfully');
-    const database = client.db('the_niketan');
-    const apartmentsCollections = database.collection('apartments');
-    const bookingCollections = database.collection('bookings');
-    const usersCollections = database.collection('users');
-    const reviewCollections = database.collection('reviews');
-
-    return {
-      client,
-      apartmentsCollections,
-      bookingCollections,
-      usersCollections,
-      reviewCollections,
-    };
-  } catch (error) {
-    console.error('Failed to connect to the database:', error);
-    throw error;
   }
+  return client.db('the_niketan');
 }
 
 async function verifyToken(req) {
@@ -55,112 +43,51 @@ async function verifyToken(req) {
   return null;
 }
 
-module.exports = async (req, res) => {
-  if (!run.promised) {
-    run.promised = run();
-  }
-  const { client, apartmentsCollections, bookingCollections, usersCollections, reviewCollections } = await run.promised;
+async function getApartments() {
+  const database = await connectToDatabase();
+  const apartmentsCollections = database.collection('apartments');
+  const cursor = apartmentsCollections.find({});
+  return cursor.toArray();
+}
+
+async function addApartment(apartment) {
+  const database = await connectToDatabase();
+  const apartmentsCollections = database.collection('apartments');
+  return apartmentsCollections.insertOne(apartment);
+}
+
+async function getApartmentById(id) {
+  const database = await connectToDatabase();
+  const apartmentsCollections = database.collection('apartments');
+  const query = { _id: ObjectId(id) };
+  return apartmentsCollections.findOne(query);
+}
+
+// Add other functions for handling bookings, users, and reviews here
+
+async function handler(req, res) {
   const { method, query, body } = req;
   const email = await verifyToken(req);
 
   if (method === 'GET' && req.url === '/apartments') {
-    const cursor = apartmentsCollections.find({});
-    const apartments = await cursor.toArray();
-    res.json(apartments);
+    const apartments = await getApartments();
+    return apartments;
   } else if (method === 'POST' && req.url === '/apartments') {
     const apartment = body;
-    const result = await apartmentsCollections.insertOne(apartment);
-    res.json(result);
+    const result = await addApartment(apartment);
+    return result;
   } else if (method === 'GET' && req.url.startsWith('/apartments/')) {
-    const id = req.url.split('/').pop();
-    console.log('Getting the apartment id: ', id);
-    const query = { _id: ObjectId(id) };
-    const apartment = await apartmentsCollections.findOne(query);
-    console.log(apartment);
-    res.json(apartment);
-  } else if (method === 'GET' && req.url === '/allbookings') {
-    const cursor = bookingCollections.find({});
-    const bookings = await cursor.toArray();
-    res.json(bookings);
-  } else if (method === 'GET' && req.url === '/bookings') {
-    const email = query.email;
-    const query = { email: email };
-    const cursor = bookingCollections.find(query);
-    const bookings = await cursor.toArray();
-    res.json(bookings);
-  } else if (method === 'POST' && req.url === '/bookings') {
-    const booking = body;
-    const result = await bookingCollections.insertOne(booking);
-    res.json(result);
-  } else if (method === 'DELETE' && req.url.startsWith('/bookings/')) {
-    const id = req.url.split('/').pop();
-    const query = { _id: ObjectId(id) };
-    const result = await bookingCollections.deleteOne(query);
-    console.log('deleting booking with id ', result);
-    res.json(result);
-  } else if (method === 'PUT' && req.url.startsWith('/bookings/')) {
-    const id = req.url.split('/').pop();
-    const updatedBooking = body;
-    const filter = { _id: ObjectId(id) };
-    const options = { upsert: true };
-    const updateDoc = {
-      $set: {
-        status: updatedBooking.status
-      },
-    };
-    const result = await bookingCollections.updateOne(filter, updateDoc, options);
-    console.log(result);
-    res.json(result);
-  } else if (method === 'POST' && req.url === '/users') {
-    const user = body;
-    const result = await usersCollections.insertOne(user);
-    console.log(result);
-    res.json(result);
-  } else if (method === 'PUT' && req.url === '/users') {
-    const user = body;
-    const filter = { email: user.email };
-    const options = { upsert: true };
-    const updateDoc = { $set: user };
-    const result = await usersCollections.updateOne(filter, updateDoc, options);
-    res.json(result);
-  } else if (method === 'PUT' && req.url === '/users/admin') {
-    const user = body;
-    const requester = email;
-
-    if (requester) {
-      const requesterAccount = await usersCollections.findOne({ email: requester });
-      if (requesterAccount.role === 'admin') {
-        const filter = { email: user.email };
-        const updateDoc = { $set: { role: 'admin' } };
-        const result = await usersCollections.updateOne(filter, updateDoc);
-        res.json(result);
-      } else {
-        res.status(403).json({ message: 'You do not have access to make admin' });
-      }
-    } else {
-      res.status(403).json({ message: 'You do not have access to make admin' });
-    }
-  } else if (method === 'GET' && req.url.startsWith('/users/')) {
-    const email = req.url.split('/').pop();
-    const query = { email: email };
-    const user = await usersCollections.findOne(query);
-    let isAdmin = false;
-    if (user?.role === 'admin') {
-      isAdmin = true;
-    }
-    res.json({ admin: isAdmin });
-  } else if (method === 'POST' && req.url === '/reviews') {
-    const review = body;
-    const result = await reviewCollections.insertOne(review);
-    res.json(result);
-  } else if (method === 'GET' && req.url === '/reviews') {
-    const cursor = reviewCollections.find({});
-    const result = await cursor.toArray();
-    res.json(result);
+    const id = parse(req.url, true).pathname.split('/').pop();
+    const apartment = await getApartmentById(id);
+    return apartment;
   } else {
-    res.status(404).json({ error: 'Not Found' });
+    return { error: 'Not Found' };
   }
-};
+}
+
+const corsHandler = cors(handler);
+module.exports = micro(corsHandler);
+
 
 
 // const express = require('express')
