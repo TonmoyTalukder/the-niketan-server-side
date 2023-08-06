@@ -3,7 +3,7 @@ const app = express()
 const cors = require('cors');
 const admin = require("firebase-admin");
 require('dotenv').config();
-const { MongoClient } = require('mongodb');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const ObjectId = require('mongodb').ObjectId;
 
 const port = process.env.PORT || 5000;
@@ -21,9 +21,21 @@ admin.initializeApp({
 app.use(cors());
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@traversymedia.a77qb.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
+// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@traversymedia.a77qb.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@traversymedia.a77qb.mongodb.net/?retryWrites=true&w=majority`
 
-const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+// mongodb+srv://<username>:<password>@traversymedia.a77qb.mongodb.net/?retryWrites=true&w=majority
+
+// const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const client = new MongoClient(uri, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    }
+  });
 
 
 async function verifyToken(req, res, next) {
