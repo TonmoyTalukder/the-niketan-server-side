@@ -1,3 +1,4 @@
 node_modules
 .env
 the-niketan-firebase-adminsdk.json
+.vercel
